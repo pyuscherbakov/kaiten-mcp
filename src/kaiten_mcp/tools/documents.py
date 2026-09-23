@@ -5,6 +5,7 @@ import time
 from typing import Any
 
 from kaiten_mcp.tools.compact import DEFAULT_LIMIT
+from kaiten_mcp.tools.prosemirror_md import prosemirror_to_markdown
 
 TOOLS: dict[str, dict] = {}
 
@@ -255,16 +256,37 @@ _tool(
 
 
 async def _get_document(client, args: dict) -> Any:
-    return await client.get(f"/documents/{args['document_uid']}")
+    doc = await client.get(f"/documents/{args['document_uid']}")
+    if args.get("format") == "raw":
+        return doc
+    # Raw payload is ~5KB even for tiny docs: access_record, documentGroup, stringified JSON.
+    return {
+        "uid": doc.get("uid"),
+        "title": doc.get("title"),
+        "parent_entity_uid": doc.get("parent_entity_uid"),
+        "updated": doc.get("updated"),
+        "author": (doc.get("author") or {}).get("full_name"),
+        "updater": (doc.get("updater") or {}).get("full_name"),
+        "text": prosemirror_to_markdown(doc.get("data")),
+    }
 
 
 _tool(
     "kaiten_get_document",
-    "Get a Kaiten document by UID.",
+    "Get a Kaiten document by UID. Default format 'markdown' returns "
+    "{uid, title, parent_entity_uid, updated, author, updater, text} with the body as Markdown. "
+    "Use format 'raw' for the full API response incl. ProseMirror 'data' "
+    "(needed to edit content via kaiten_update_document 'data').",
     {
         "type": "object",
         "properties": {
             "document_uid": {"type": "string", "description": "Document UID"},
+            "format": {
+                "type": "string",
+                "enum": ["markdown", "raw"],
+                "default": "markdown",
+                "description": "markdown (compact, default) or raw (full API response)",
+            },
         },
         "required": ["document_uid"],
     },
