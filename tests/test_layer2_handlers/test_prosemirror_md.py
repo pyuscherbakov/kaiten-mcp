@@ -199,3 +199,8 @@ class TestInline:
     def test_unknown_inline_keeps_text(self):
         para = _p(_t("hi "), {"type": "mention", "content": [_t("@bob")]})
         assert prosemirror_to_markdown(_doc(para)) == "hi @bob"
+
+    def test_atom_inline_uses_attrs_label(self):
+        mention = {"type": "mention", "attrs": {"id": 1, "label": "Ivan"}}
+        para = _p(_t("ask "), mention, _t(" now"))
+        assert prosemirror_to_markdown(_doc(para)) == "ask Ivan now"

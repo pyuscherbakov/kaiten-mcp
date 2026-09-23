@@ -278,7 +278,9 @@ _tool(
     "Get a Kaiten document by UID. Default format 'markdown' returns "
     "{uid, title, parent_entity_uid, updated, author, updater, text} with the body as Markdown. "
     "Use format 'raw' for the full API response incl. ProseMirror 'data' "
-    "(needed to edit content via kaiten_update_document 'data').",
+    "(needed to edit content via kaiten_update_document 'data'). "
+    "Markdown is for reading: links, lists and tables are not preserved if it is written "
+    "back via kaiten_update_document 'text'.",
     {
         "type": "object",
         "properties": {

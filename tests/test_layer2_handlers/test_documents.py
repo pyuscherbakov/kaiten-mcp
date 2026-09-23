@@ -831,6 +831,10 @@ class TestGetDocument:
         assert prop["enum"] == ["markdown", "raw"]
         assert prop["default"] == "markdown"
 
+    def test_get_document_description_warns_markdown_roundtrip_is_lossy(self):
+        desc = TOOLS["kaiten_get_document"]["description"]
+        assert "not preserved" in desc
+
 
 class TestUpdateDocument:
     async def test_update_document_required_only(self, client, mock_api):

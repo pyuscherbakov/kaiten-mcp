@@ -55,8 +55,12 @@ def _inline(nodes: list[dict]) -> str:
         elif kind == "image":
             out.append(_image(node))
         else:
-            # ponytail: unknown inline (mention, emoji) degrades to its child text
-            out.append(_inline(_children(node)))
+            # ponytail: unknown inline (mention, emoji) degrades to child text or attrs label
+            attrs = _attrs(node)
+            label = next(
+                (attrs[k] for k in ("label", "text", "name", "title") if attrs.get(k)), ""
+            )
+            out.append(_inline(_children(node)) or str(label))
     return "".join(out)
 
 
