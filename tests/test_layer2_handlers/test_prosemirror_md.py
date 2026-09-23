@@ -160,6 +160,10 @@ class TestBlocks:
         node = {"type": "callout", "content": [_p(_t("note"))]}
         assert prosemirror_to_markdown(_doc(node)) == "note"
 
+    def test_unknown_block_with_inline_children_stays_one_line(self):
+        node = {"type": "callout", "content": [_t("a "), _t("b", {"type": "strong"})]}
+        assert prosemirror_to_markdown(_doc(node)) == "a **b**"
+
 
 class TestInline:
     def test_marks(self):
