@@ -721,6 +721,15 @@ class TestListDocuments:
         assert "limit=10" in url
         assert "offset=5" in url
 
+    async def test_list_documents_strips_access_record(self, client, mock_api):
+        mock_api.get("/documents").mock(
+            return_value=Response(
+                200, json=[{"uid": "a", "title": "T", "access_record": {"role": 1}}]
+            )
+        )
+        result = await TOOLS["kaiten_list_documents"]["handler"](client, {})
+        assert result == [{"uid": "a", "title": "T"}]
+
 
 class TestCreateDocument:
     async def test_create_document_required_only(self, client, mock_api):

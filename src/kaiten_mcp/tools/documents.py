@@ -187,7 +187,9 @@ async def _list_documents(client, args: dict) -> Any:
         if args.get(key) is not None:
             params[key] = args[key]
     params["limit"] = args.get("limit", DEFAULT_LIMIT)
-    return await client.get("/documents", params=params)
+    docs = await client.get("/documents", params=params)
+    # access_record is ~2.5KB of role permissions per item, useless for reading
+    return [{k: v for k, v in d.items() if k != "access_record"} for d in docs]
 
 
 _tool(
