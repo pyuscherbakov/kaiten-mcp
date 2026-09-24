@@ -721,6 +721,27 @@ class TestListDocuments:
         assert "limit=10" in url
         assert "offset=5" in url
 
+    async def test_list_documents_strips_access_record(self, client, mock_api):
+        mock_api.get("/documents").mock(
+            return_value=Response(
+                200, json=[{"uid": "a", "title": "T", "access_record": {"role": 1}}]
+            )
+        )
+        result = await TOOLS["kaiten_list_documents"]["handler"](client, {})
+        assert result == [{"uid": "a", "title": "T"}]
+
+    async def test_list_documents_empty_body_passes_through(self, client, mock_api):
+        mock_api.get("/documents").mock(return_value=Response(204))
+        result = await TOOLS["kaiten_list_documents"]["handler"](client, {})
+        assert result is None
+
+    async def test_list_documents_keeps_non_dict_items(self, client, mock_api):
+        mock_api.get("/documents").mock(
+            return_value=Response(200, json=[{"uid": "a", "access_record": 1}, "junk"])
+        )
+        result = await TOOLS["kaiten_list_documents"]["handler"](client, {})
+        assert result == [{"uid": "a"}, "junk"]
+
 
 class TestCreateDocument:
     async def test_create_document_required_only(self, client, mock_api):
@@ -755,6 +776,30 @@ class TestCreateDocument:
         }
 
 
+RAW_DOC = {
+    "uid": "abc-uid",
+    "title": "Doc",
+    "parent_entity_uid": "grp-1",
+    "updated": "2024-09-17T11:10:16.077Z",
+    "data": json.dumps(
+        {
+            "type": "doc",
+            "content": [
+                {
+                    "type": "heading",
+                    "attrs": {"level": 2},
+                    "content": [{"type": "text", "text": "Hi"}],
+                }
+            ],
+        }
+    ),
+    "access_record": {"role_permissions": {"document": {"read": True}}},
+    "documentGroup": {"uid": "grp-1"},
+    "author": {"id": 1, "full_name": "Ann", "email": "ann@example.com"},
+    "updater": {"id": 2, "full_name": "Bob", "email": "bob@example.com"},
+}
+
+
 class TestGetDocument:
     async def test_get_document_required_only(self, client, mock_api):
         route = mock_api.get("/documents/abc-uid").mock(
@@ -763,6 +808,44 @@ class TestGetDocument:
         result = await TOOLS["kaiten_get_document"]["handler"](client, {"document_uid": "abc-uid"})
         assert route.called
         assert result["uid"] == "abc-uid"
+
+    async def test_get_document_markdown_by_default(self, client, mock_api):
+        mock_api.get("/documents/abc-uid").mock(return_value=Response(200, json=RAW_DOC))
+        result = await TOOLS["kaiten_get_document"]["handler"](client, {"document_uid": "abc-uid"})
+        assert result == {
+            "uid": "abc-uid",
+            "title": "Doc",
+            "parent_entity_uid": "grp-1",
+            "updated": "2024-09-17T11:10:16.077Z",
+            "author": "Ann",
+            "updater": "Bob",
+            "text": "## Hi",
+        }
+
+    async def test_get_document_raw_format_returns_api_response(self, client, mock_api):
+        mock_api.get("/documents/abc-uid").mock(return_value=Response(200, json=RAW_DOC))
+        result = await TOOLS["kaiten_get_document"]["handler"](
+            client, {"document_uid": "abc-uid", "format": "raw"}
+        )
+        assert result == RAW_DOC
+
+    async def test_get_document_markdown_without_author_or_data(self, client, mock_api):
+        mock_api.get("/documents/abc-uid").mock(
+            return_value=Response(200, json={"uid": "abc-uid", "title": "Doc", "author": None})
+        )
+        result = await TOOLS["kaiten_get_document"]["handler"](client, {"document_uid": "abc-uid"})
+        assert result["author"] is None
+        assert result["updater"] is None
+        assert result["text"] == ""
+
+    def test_get_document_schema_has_format_enum(self):
+        prop = TOOLS["kaiten_get_document"]["inputSchema"]["properties"]["format"]
+        assert prop["enum"] == ["markdown", "raw"]
+        assert prop["default"] == "markdown"
+
+    def test_get_document_description_warns_markdown_roundtrip_is_lossy(self):
+        desc = TOOLS["kaiten_get_document"]["description"]
+        assert "not preserved" in desc
 
 
 class TestUpdateDocument:

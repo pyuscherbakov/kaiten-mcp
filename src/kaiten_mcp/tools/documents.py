@@ -5,6 +5,7 @@ import time
 from typing import Any
 
 from kaiten_mcp.tools.compact import DEFAULT_LIMIT
+from kaiten_mcp.tools.prosemirror_md import prosemirror_to_markdown
 
 TOOLS: dict[str, dict] = {}
 
@@ -186,7 +187,14 @@ async def _list_documents(client, args: dict) -> Any:
         if args.get(key) is not None:
             params[key] = args[key]
     params["limit"] = args.get("limit", DEFAULT_LIMIT)
-    return await client.get("/documents", params=params)
+    docs = await client.get("/documents", params=params)
+    if not isinstance(docs, list):
+        return docs
+    # access_record is ~2.5KB of role permissions per item, useless for reading
+    return [
+        {k: v for k, v in d.items() if k != "access_record"} if isinstance(d, dict) else d
+        for d in docs
+    ]
 
 
 _tool(
@@ -255,16 +263,39 @@ _tool(
 
 
 async def _get_document(client, args: dict) -> Any:
-    return await client.get(f"/documents/{args['document_uid']}")
+    doc = await client.get(f"/documents/{args['document_uid']}")
+    if args.get("format") == "raw":
+        return doc
+    # Raw payload is ~5KB even for tiny docs: access_record, documentGroup, stringified JSON.
+    return {
+        "uid": doc.get("uid"),
+        "title": doc.get("title"),
+        "parent_entity_uid": doc.get("parent_entity_uid"),
+        "updated": doc.get("updated"),
+        "author": (doc.get("author") or {}).get("full_name"),
+        "updater": (doc.get("updater") or {}).get("full_name"),
+        "text": prosemirror_to_markdown(doc.get("data")),
+    }
 
 
 _tool(
     "kaiten_get_document",
-    "Get a Kaiten document by UID.",
+    "Get a Kaiten document by UID. Default format 'markdown' returns "
+    "{uid, title, parent_entity_uid, updated, author, updater, text} with the body as Markdown. "
+    "Use format 'raw' for the full API response incl. ProseMirror 'data' "
+    "(needed to edit content via kaiten_update_document 'data'). "
+    "Markdown is for reading: links, lists and tables are not preserved if it is written "
+    "back via kaiten_update_document 'text'.",
     {
         "type": "object",
         "properties": {
             "document_uid": {"type": "string", "description": "Document UID"},
+            "format": {
+                "type": "string",
+                "enum": ["markdown", "raw"],
+                "default": "markdown",
+                "description": "markdown (compact, default) or raw (full API response)",
+            },
         },
         "required": ["document_uid"],
     },
