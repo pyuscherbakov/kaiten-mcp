@@ -205,6 +205,19 @@ class TestInline:
         para = _p(_t("ask "), mention, _t(" now"))
         assert prosemirror_to_markdown(_doc(para)) == "ask Ivan now"
 
+    def test_inline_card_link_keeps_url(self):
+        card = {"type": "inline_card_link", "attrs": {"type": "document", "url": "http://k/d/1"}}
+        para = _p(_t("(see "), card, _t(")."))
+        assert prosemirror_to_markdown(_doc(para)) == "(see [http://k/d/1](http://k/d/1))."
+
+    def test_adjacent_files_are_separate_links(self):
+        a = {"type": "file", "attrs": {"url": "http://f/a.xlsx", "name": "a.xlsx"}}
+        b = {"type": "file", "attrs": {"url": "http://f/b.xlsx", "name": "b.xlsx"}}
+        assert (
+            prosemirror_to_markdown(_doc(_p(a, b)))
+            == "[a.xlsx](http://f/a.xlsx) [b.xlsx](http://f/b.xlsx)"
+        )
+
 
 class TestReviewFixes:
     def test_adjacent_runs_share_open_marks(self):

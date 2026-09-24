@@ -43,7 +43,10 @@ def _atom(node: dict) -> str:
     # ponytail: unknown inline (mention, emoji) degrades to child text or attrs label
     attrs = _attrs(node)
     label = next((attrs[k] for k in ("label", "text", "name", "title") if attrs.get(k)), "")
-    return _inline(_children(node)) or str(label)
+    text = _inline(_children(node)) or str(label)
+    # file / inline_card_link carry the target only in attrs.url
+    url = attrs.get("url")
+    return f"[{text or url}]({url})" if url else text
 
 
 def _inline(nodes: list[dict]) -> str:
@@ -65,9 +68,13 @@ def _inline(nodes: list[dict]) -> str:
         kind = node.get("type")
         if kind != "text":
             close(0)
-            out += (
+            piece = (
                 "\n" if kind == "hard_break" else _image(node) if kind == "image" else _atom(node)
             )
+            # Kaiten puts attached files side by side with no text between them
+            if piece.startswith("[") and out.endswith(")"):
+                out += " "
+            out += piece
             continue
         text = str(node.get("text") or "")
         core = text.strip()
