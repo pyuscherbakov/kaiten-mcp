@@ -5,6 +5,10 @@ __pycache__/
 dist/
 build/
 *.egg
+.pytest_cache
+.mypy_cache/
+.coverage
+htmlcov/
 
 # Virtual environments
 .venv/
@@ -29,6 +33,16 @@ kaiten-mcp.env
 .swarm/
 .mcp.json
 /CLAUDE.md
+.superpowers
+.claude-mem/
+docs/superpowers/
+.hive-mind/
+
+# Other AI tools
+.roo/
+.cursor/
+.codex/
+AGENTS.md
 
 # Docker
 .docker/
@@ -36,3 +50,6 @@ kaiten-mcp.env
 # OS
 .DS_Store
 Thumbs.db
+
+#Ruff
+.ruff_cache
