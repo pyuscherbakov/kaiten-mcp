@@ -730,6 +730,18 @@ class TestListDocuments:
         result = await TOOLS["kaiten_list_documents"]["handler"](client, {})
         assert result == [{"uid": "a", "title": "T"}]
 
+    async def test_list_documents_empty_body_passes_through(self, client, mock_api):
+        mock_api.get("/documents").mock(return_value=Response(204))
+        result = await TOOLS["kaiten_list_documents"]["handler"](client, {})
+        assert result is None
+
+    async def test_list_documents_keeps_non_dict_items(self, client, mock_api):
+        mock_api.get("/documents").mock(
+            return_value=Response(200, json=[{"uid": "a", "access_record": 1}, "junk"])
+        )
+        result = await TOOLS["kaiten_list_documents"]["handler"](client, {})
+        assert result == [{"uid": "a"}, "junk"]
+
 
 class TestCreateDocument:
     async def test_create_document_required_only(self, client, mock_api):

@@ -204,3 +204,54 @@ class TestInline:
         mention = {"type": "mention", "attrs": {"id": 1, "label": "Ivan"}}
         para = _p(_t("ask "), mention, _t(" now"))
         assert prosemirror_to_markdown(_doc(para)) == "ask Ivan now"
+
+
+class TestReviewFixes:
+    def test_adjacent_runs_share_open_marks(self):
+        para = _p(_t("foo", {"type": "strong"}), _t("bar", {"type": "strong"}, {"type": "em"}))
+        assert prosemirror_to_markdown(_doc(para)) == "**foo*bar***"
+
+    def test_same_marks_across_nodes_merge(self):
+        para = _p(_t("a", {"type": "strong"}), _t("b", {"type": "strong"}))
+        assert prosemirror_to_markdown(_doc(para)) == "**ab**"
+
+    def test_link_run_spans_nodes(self):
+        link = {"type": "link", "attrs": {"href": "u"}}
+        para = _p(_t("see ", link), _t("docs", link, {"type": "strong"}))
+        assert prosemirror_to_markdown(_doc(para)) == "[see **docs**](u)"
+
+    def test_code_with_backtick_uses_double_fence(self):
+        para = _p(_t("a`b", {"type": "code"}))
+        assert prosemirror_to_markdown(_doc(para)) == "`` a`b ``"
+
+    def test_code_inside_strong(self):
+        para = _p(_t("x", {"type": "strong"}, {"type": "code"}))
+        assert prosemirror_to_markdown(_doc(para)) == "**`x`**"
+
+    def test_heading_hard_break_stays_one_line(self):
+        node = {
+            "type": "heading",
+            "attrs": {"level": 2},
+            "content": [_t("a"), {"type": "hard_break"}, _t("b")],
+        }
+        assert prosemirror_to_markdown(_doc(node)) == "## a b"
+
+    def test_heading_level_clamped_to_6(self):
+        node = {"type": "heading", "attrs": {"level": 9}, "content": [_t("h")]}
+        assert prosemirror_to_markdown(_doc(node)) == "###### h"
+
+    def test_text_none_renders_empty(self):
+        para = _p(_t("a"), {"type": "text", "text": None})
+        assert prosemirror_to_markdown(_doc(para)) == "a"
+
+    def test_malformed_attrs_fall_back_to_plain_text(self):
+        doc = _doc(
+            _p(_t("one")),
+            {"type": "heading", "attrs": {"level": "x"}, "content": [_t("two")]},
+            {
+                "type": "ordered_list",
+                "attrs": {"order": "2"},
+                "content": [_li(_p(_t("th"), _t("ree", {"type": "link", "attrs": "x"})))],
+            },
+        )
+        assert prosemirror_to_markdown(doc) == "one\ntwo\nthree"

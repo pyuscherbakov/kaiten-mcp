@@ -188,8 +188,13 @@ async def _list_documents(client, args: dict) -> Any:
             params[key] = args[key]
     params["limit"] = args.get("limit", DEFAULT_LIMIT)
     docs = await client.get("/documents", params=params)
+    if not isinstance(docs, list):
+        return docs
     # access_record is ~2.5KB of role permissions per item, useless for reading
-    return [{k: v for k, v in d.items() if k != "access_record"} for d in docs]
+    return [
+        {k: v for k, v in d.items() if k != "access_record"} if isinstance(d, dict) else d
+        for d in docs
+    ]
 
 
 _tool(

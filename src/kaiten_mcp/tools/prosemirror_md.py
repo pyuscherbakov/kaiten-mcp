@@ -16,27 +16,22 @@ def _attrs(node: dict) -> dict:
     return node.get("attrs") or {}
 
 
-def _text(node: dict) -> str:
-    """Render a text node; edge whitespace stays outside the markers."""
-    text = str(node.get("text", ""))
-    core = text.strip()
-    if not core:
-        return text
-    marks = {m.get("type"): _attrs(m) for m in node.get("marks") or [] if isinstance(m, dict)}
-    if "code" in marks:
-        core = f"`{core}`"
-    if "strong" in marks:
-        core = f"**{core}**"
-    if "em" in marks:
-        core = f"*{core}*"
-    if "strike" in marks:
-        core = f"~~{core}~~"
-    href = marks.get("link", {}).get("href")
+_WRAP = {"strike": "~~", "em": "*", "strong": "**"}
+
+
+def _marks(node: dict) -> tuple[list[tuple[str, str]], bool]:
+    """Wrapper marks outermost first, as (type, href), plus whether the node is code."""
+    found = {m.get("type"): _attrs(m) for m in node.get("marks") or [] if isinstance(m, dict)}
+    wraps = [(kind, "") for kind in _WRAP if kind in found]
+    href = found.get("link", {}).get("href")
     if href:
-        core = f"[{core}]({href})"
-    lead = text[: len(text) - len(text.lstrip())]
-    trail = text[len(text.rstrip()) :]
-    return lead + core + trail
+        wraps.insert(0, ("link", str(href)))
+    return wraps, "code" in found
+
+
+def _code(text: str) -> str:
+    # ponytail: text containing "``" would need a longer fence; not seen in Kaiten docs
+    return f"`` {text} ``" if "`" in text else f"`{text}`"
 
 
 def _image(node: dict) -> str:
@@ -44,24 +39,54 @@ def _image(node: dict) -> str:
     return f"![{attrs.get('alt') or ''}]({attrs.get('src') or ''})"
 
 
+def _atom(node: dict) -> str:
+    # ponytail: unknown inline (mention, emoji) degrades to child text or attrs label
+    attrs = _attrs(node)
+    label = next((attrs[k] for k in ("label", "text", "name", "title") if attrs.get(k)), "")
+    return _inline(_children(node)) or str(label)
+
+
 def _inline(nodes: list[dict]) -> str:
-    out = []
+    """Render inline nodes; marks stay open across adjacent text nodes that share them."""
+    out = ""
+    stack: list[tuple[str, str]] = []  # open wrapper marks, outermost first
+
+    def close(keep: int) -> None:
+        nonlocal out
+        body = out.rstrip()  # edge whitespace goes outside the closing markers
+        closers = "".join(
+            f"]({href})" if kind == "link" else _WRAP[kind]
+            for kind, href in reversed(stack[keep:])
+        )
+        out = body + closers + out[len(body) :]
+        del stack[keep:]
+
     for node in nodes:
         kind = node.get("type")
-        if kind == "text":
-            out.append(_text(node))
-        elif kind == "hard_break":
-            out.append("\n")
-        elif kind == "image":
-            out.append(_image(node))
-        else:
-            # ponytail: unknown inline (mention, emoji) degrades to child text or attrs label
-            attrs = _attrs(node)
-            label = next(
-                (attrs[k] for k in ("label", "text", "name", "title") if attrs.get(k)), ""
+        if kind != "text":
+            close(0)
+            out += (
+                "\n" if kind == "hard_break" else _image(node) if kind == "image" else _atom(node)
             )
-            out.append(_inline(_children(node)) or str(label))
-    return "".join(out)
+            continue
+        text = str(node.get("text") or "")
+        core = text.strip()
+        if not core:
+            out += text
+            continue
+        wraps, code = _marks(node)
+        keep = 0
+        while keep < len(stack) and stack[keep] in wraps:
+            keep += 1
+        close(keep)
+        opens = [w for w in wraps if w not in stack]
+        stack.extend(opens)
+        lead = text[: len(text) - len(text.lstrip())]
+        trail = text[len(text.rstrip()) :]
+        markers = "".join("[" if k == "link" else _WRAP[k] for k, _ in opens)
+        out += lead + markers + (_code(core) if code else core) + trail
+    close(0)
+    return out
 
 
 def _blocks(nodes: list[dict], sep: str = "\n\n") -> str:
@@ -97,8 +122,8 @@ def _block(node: dict) -> str:
     kind = str(node.get("type", ""))
     heading = _HEADING.match(kind)
     if heading:
-        level = int(heading.group(1) or _attrs(node).get("level") or 1)
-        text = _inline(_children(node))
+        level = max(1, min(6, int(heading.group(1) or _attrs(node).get("level") or 1)))
+        text = _inline(_children(node)).replace("\n", " ")
         return f"{'#' * level} {text}" if text.strip() else ""
     if kind == "paragraph":
         return _inline(_children(node))
@@ -134,4 +159,19 @@ def prosemirror_to_markdown(data: Any) -> str:
             data = json.loads(raw)
         except ValueError:
             return raw
-    return _block(data).strip() if isinstance(data, dict) else ""
+    if not isinstance(data, dict):
+        return ""
+    try:
+        return _block(data).strip()
+    except (TypeError, ValueError, AttributeError):
+        # Malformed attrs (wrong types) must not make the document unreadable.
+        return _plain(data).strip()
+
+
+def _plain(node: dict) -> str:
+    """Bare text of a node tree: fallback when the Markdown rendering fails."""
+    if node.get("type") == "text":
+        return str(node.get("text") or "")
+    children = _children(node)
+    sep = "" if any(c.get("type") == "text" for c in children) else "\n"
+    return sep.join(_plain(c) for c in children)
